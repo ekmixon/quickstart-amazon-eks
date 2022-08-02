@@ -17,24 +17,27 @@ def delete_objects(event, _c):
     while True:
         versions = s3.list_object_versions(**kwargs)
         if 'Versions' in versions.keys():
-            for v in versions['Versions']:
-                objects.append({'Key': v['Key'], 'VersionId': v['VersionId']})
+            objects.extend(
+                {'Key': v['Key'], 'VersionId': v['VersionId']}
+                for v in versions['Versions']
+            )
+
         if 'DeleteMarkers' in versions.keys():
-            for v in versions['DeleteMarkers']:
-                objects.append({'Key': v['Key'], 'VersionId': v['VersionId']})
-        if versions['IsTruncated']:
-            if versions.get('NextKeyMarker', 'null') != 'null':
-                kwargs["KeyMarker"] = versions['NextKeyMarker']
-            else:
-                if kwargs.get("KeyMarker"):
-                    del kwargs["KeyMarker"]
-            if versions.get('NextVersionIdMarker', 'null') != 'null':
-                kwargs["VersionIdMarker"] = versions['NextVersionIdMarker']
-            else:
-                if kwargs.get("VersionIdMarker"):
-                    del kwargs["VersionIdMarker"]
-        else:
+            objects.extend(
+                {'Key': v['Key'], 'VersionId': v['VersionId']}
+                for v in versions['DeleteMarkers']
+            )
+
+        if not versions['IsTruncated']:
             break
+        if versions.get('NextKeyMarker', 'null') != 'null':
+            kwargs["KeyMarker"] = versions['NextKeyMarker']
+        elif kwargs.get("KeyMarker"):
+            del kwargs["KeyMarker"]
+        if versions.get('NextVersionIdMarker', 'null') != 'null':
+            kwargs["VersionIdMarker"] = versions['NextVersionIdMarker']
+        elif kwargs.get("VersionIdMarker"):
+            del kwargs["VersionIdMarker"]
     if objects:
         # delete objects in batches of 1000
         for i in range(0, len(objects), 1000):

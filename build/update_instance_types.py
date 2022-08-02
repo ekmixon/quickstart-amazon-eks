@@ -32,12 +32,16 @@ def get_region_map():
     auth_map = {}
     if TASKCAT_GLOBAL_CONFIG.exists():
         with open(TASKCAT_GLOBAL_CONFIG, 'r') as fh:
-            auth_map.update(yaml.safe_load(fh).get('general', {}).get('auth', {'default': 'default'}))
+            auth_map |= (
+                yaml.safe_load(fh)
+                .get('general', {})
+                .get('auth', {'default': 'default'})
+            )
+
     if 'default' not in auth_map:
         auth_map['default'] = 'default'
     ec2 = boto3.Session(profile_name=auth_map['default']).client('ec2')
-    regions = get_qs_regions(ec2, auth_map)
-    return regions
+    return get_qs_regions(ec2, auth_map)
 
 
 def get_qs_regions(ec2, auth_map):
@@ -80,8 +84,12 @@ def get_instances(filters, auth_map):
     for ec2_filter in filters:
         raw_instances = eval_filter(ec2_filter, raw_instances)
     for r in raw_instances.values():
-        price = r.get('pricing', {}).get('us-east-1', {}).get('linux', {}).get('ondemand')
-        if price:
+        if (
+            price := r.get('pricing', {})
+            .get('us-east-1', {})
+            .get('linux', {})
+            .get('ondemand')
+        ):
             instance_regions = set(r['pricing'].keys())
             for region_name in instance_regions:
                 if region_name not in region_map:
@@ -129,7 +137,7 @@ def eval_filter(ec2_filter, instances):
 
 
 if __name__ == '__main__':
-    if not len(argv) == 2:
+    if len(argv) != 2:
         print("Usage: update_instance_types.py <TEMPLATE_PATH>")
         exit(1)
     template_path = Path(argv[1]).expanduser().resolve()
@@ -139,7 +147,7 @@ if __name__ == '__main__':
     template = cfn_yaml.load(str(template_path))
     config = template.get('Metadata', {}).get('AutoInstance')
     if not config:
-        print(f"Config not present in template at Metadata->AutoInstance")
+        print("Config not present in template at Metadata->AutoInstance")
         exit(1)
     for parameter, param_config in config.items():
         print(f"processing {parameter}")

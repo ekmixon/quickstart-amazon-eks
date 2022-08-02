@@ -128,8 +128,11 @@ def register(event, _):
             print("resource missing, re-registering...")
         else:
             try:
-                arn = cfn.describe_type(Type='RESOURCE', TypeName=event['ResourceProperties']['TypeName'])['Arn']
-                return arn
+                return cfn.describe_type(
+                    Type='RESOURCE',
+                    TypeName=event['ResourceProperties']['TypeName'],
+                )['Arn']
+
             except cfn.exceptions.TypeNotFoundException:
                 print("resource missing, re-registering...")
     execution_role_arn = put_role(type_name, event['ResourceProperties']['IamPolicy'], execution_trust_policy)

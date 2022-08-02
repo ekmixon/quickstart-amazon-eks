@@ -26,34 +26,35 @@ def delete_dependencies(sg_id, c):
     filters = [{'Name': 'ip-permission.group-id', 'Values': [sg_id]}]
     for sg in c.describe_security_groups(Filters=filters)['SecurityGroups']:
         for p in sg['IpPermissions']:
-            if 'UserIdGroupPairs' in p.keys():
-                if sg_id in [x['GroupId'] for x in p['UserIdGroupPairs']]:
-                    try:
-                        c.revoke_security_group_ingress(GroupId=sg['GroupId'], IpPermissions=[p])
-                    except Exception as e:
-                        complete = False
-                        logger.error("ERROR: %s %s" % (sg['GroupId'], str(e)))
+            if 'UserIdGroupPairs' in p.keys() and sg_id in [
+                x['GroupId'] for x in p['UserIdGroupPairs']
+            ]:
+                try:
+                    c.revoke_security_group_ingress(GroupId=sg['GroupId'], IpPermissions=[p])
+                except Exception as e:
+                    complete = False
+                    logger.error(f"ERROR: {sg['GroupId']} {str(e)}")
     filters = [{'Name': 'egress.ip-permission.group-id', 'Values': [sg_id]}]
     for sg in c.describe_security_groups(Filters=filters)['SecurityGroups']:
         for p in sg['IpPermissionsEgress']:
-            if 'UserIdGroupPairs' in p.keys():
-                if sg_id in [x['GroupId'] for x in p['UserIdGroupPairs']]:
-                    try:
-                        c.revoke_security_group_egress(GroupId=sg['GroupId'], IpPermissions=[p])
-                    except Exception as e:
-                        complete = False
-                        logger.error("ERROR: %s %s" % (sg['GroupId'], str(e)))
+            if 'UserIdGroupPairs' in p.keys() and sg_id in [
+                x['GroupId'] for x in p['UserIdGroupPairs']
+            ]:
+                try:
+                    c.revoke_security_group_egress(GroupId=sg['GroupId'], IpPermissions=[p])
+                except Exception as e:
+                    complete = False
+                    logger.error(f"ERROR: {sg['GroupId']} {str(e)}")
     filters = [{'Name': 'group-id', 'Values': [sg_id]}]
     for eni in c.describe_network_interfaces(Filters=filters)['NetworkInterfaces']:
         try:
-            attachment_id = get_attachment_id_for_eni(eni)
-            if attachment_id:
+            if attachment_id := get_attachment_id_for_eni(eni):
                 c.detach_network_interface(AttachmentId=attachment_id, Force=True)
                 sleep(5)
             c.delete_network_interface(NetworkInterfaceId=eni['NetworkInterfaceId'])
         except Exception as e:
             complete = False
-            logger.error("ERROR: %s %s" % (eni['NetworkInterfaceId'], str(e)))
+            logger.error(f"ERROR: {eni['NetworkInterfaceId']} {str(e)}")
     return complete
 
 
@@ -62,9 +63,7 @@ def delete_handler(event, _):
     ec2 = boto3.client('ec2')
     for sg_id in event["ResourceProperties"]["SecurityGroups"]:
         retries = 5
-        while True:
-            if delete_dependencies(sg_id, ec2):
-                break
+        while not delete_dependencies(sg_id, ec2):
             if retries == 0:
                 logger.error(f"failed to delete {sg_id} dependencies after 5 retries")
                 break

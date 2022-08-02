@@ -50,18 +50,20 @@ def run_command(command):
     while True:
         try:
             try:
-                logger.debug("executing command: %s" % command)
+                logger.debug(f"executing command: {command}")
                 output = subprocess.check_output(shlex.split(command), stderr=subprocess.STDOUT).decode("utf-8")
                 logger.debug(output)
             except subprocess.CalledProcessError as exc:
-                logger.error("Command failed with exit code %s, stderr: %s" % (exc.returncode,
-                                                                               exc.output.decode("utf-8")))
+                logger.error(
+                    f'Command failed with exit code {exc.returncode}, stderr: {exc.output.decode("utf-8")}'
+                )
+
                 raise Exception(exc.output.decode("utf-8"))
             return output
         except Exception as e:
             if 'Unable to connect to the server' not in str(e) or retries >= 5:
                 raise
-            logger.debug("{}, retrying in 5 seconds".format(e))
+            logger.debug(f"{e}, retrying in 5 seconds")
             sleep(5)
             retries += 1
 
@@ -78,9 +80,8 @@ def json_serial(o):
 
 
 def write_manifest(manifest, path):
-    f = open(path, "w")
-    f.write(json.dumps(manifest, default=json_serial))
-    f.close()
+    with open(path, "w") as f:
+        f.write(json.dumps(manifest, default=json_serial))
 
 
 def generate_name(event, physical_resource_id):
@@ -88,21 +89,24 @@ def generate_name(event, physical_resource_id):
     if type(manifest) == str:
         manifest = yaml.safe_load(manifest)
     stack_name = event['StackId'].split('/')[1]
-    if "metadata" in manifest.keys():
-        if 'name' not in manifest["metadata"].keys() and 'generateName' not in manifest["metadata"].keys():
-            if physical_resource_id:
-                manifest["metadata"]["name"] = physical_resource_id.split('/')[-1]
-            else:
-                manifest["metadata"]["generateName"] = "cfn-%s-" % stack_name.lower()
+    if (
+        "metadata" in manifest.keys()
+        and 'name' not in manifest["metadata"].keys()
+        and 'generateName' not in manifest["metadata"].keys()
+    ):
+        if physical_resource_id:
+            manifest["metadata"]["name"] = physical_resource_id.split('/')[-1]
+        else:
+            manifest["metadata"]["generateName"] = f"cfn-{stack_name.lower()}-"
     return manifest
 
 
 def build_output(kube_response):
-    outp = {}
-    for key in ["uid", "selfLink", "resourceVersion", "namespace", "name"]:
-        if key in kube_response["metadata"].keys():
-            outp[key] = kube_response["metadata"][key]
-    return outp
+    return {
+        key: kube_response["metadata"][key]
+        for key in ["uid", "selfLink", "resourceVersion", "namespace", "name"]
+        if key in kube_response["metadata"].keys()
+    }
 
 
 def traverse(obj, path=None, callback=None):
@@ -118,20 +122,15 @@ def traverse(obj, path=None, callback=None):
     else:
         value = obj
 
-    if callback is None:
-        return value
-    else:
-        return callback(path, value)
+    return value if callback is None else callback(path, value)
 
 
 def traverse_modify(obj, target_path, action):
     target_path = to_path(target_path)
 
     def transformer(path, value):
-        if path == target_path:
-            return action(value)
-        else:
-            return value
+        return action(value) if path == target_path else value
+
     return traverse(obj, callback=transformer)
 
 
@@ -150,8 +149,7 @@ def to_path(path):
         indexes = [[int(i[1:-1])] for i in re.findall(r'\[[0-9]+\]', inner_path)]
         lists = re.split(r'\[[0-9]+\]', inner_path)
         for parts in range(len(lists)):
-            for part in lists[parts].strip('.').split('.'):
-                yield part
+            yield from lists[parts].strip('.').split('.')
             if parts < len(indexes):
                 yield indexes[parts]
             else:
@@ -232,10 +230,7 @@ def handler_init(event):
     elif 'Url' in event['ResourceProperties'].keys():
         manifest_file = '/tmp/manifest.json'
         url = event['ResourceProperties']["Url"]
-        if re.match(s3_scheme, url):
-            response = s3_get(url)
-        else:
-            response = http_get(url)
+        response = s3_get(url) if re.match(s3_scheme, url) else http_get(url)
         manifest = yaml.safe_load(response)
         write_manifest(manifest, manifest_file)
     return physical_resource_id, manifest_file
@@ -258,7 +253,7 @@ def create_handler(event, _):
     physical_resource_id,  manifest_file = handler_init(event)
     if not manifest_file:
         return physical_resource_id
-    outp = run_command("kubectl create --save-config -o json -f %s" % manifest_file)
+    outp = run_command(f"kubectl create --save-config -o json -f {manifest_file}")
     helper.Data = build_output(json.loads(outp))
     if helper.Data.get("selfLink", "").startswith('/apis/batch') and 'cronjobs' not in helper.Data.get("selfLink", ""):
         stabilize_job(helper.Data["namespace"], helper.Data["name"])
@@ -270,7 +265,7 @@ def update_handler(event, _):
     physical_resource_id,  manifest_file = handler_init(event)
     if not manifest_file:
         return physical_resource_id
-    outp = run_command("kubectl apply -o json -f %s" % manifest_file)
+    outp = run_command(f"kubectl apply -o json -f {manifest_file}")
     helper.Data = build_output(json.loads(outp))
     return helper.Data.get("selfLink", physical_resource_id)
 
@@ -280,7 +275,7 @@ def delete_handler(event, _):
     physical_resource_id,  manifest_file = handler_init(event)
     if not manifest_file:
         return physical_resource_id
-    run_command("kubectl delete -f %s" % manifest_file)
+    run_command(f"kubectl delete -f {manifest_file}")
 
 
 def lambda_handler(event, context):

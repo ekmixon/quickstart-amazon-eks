@@ -22,15 +22,17 @@ def send(event, context, responseStatus, responseData, physicalResourceId=None, 
 
     print(responseUrl)
 
-    responseBody = {}
-    responseBody['Status'] = responseStatus
-    responseBody['Reason'] = reason if reason else 'See the details in CloudWatch Log Stream: ' + context.log_stream_name
-    responseBody['PhysicalResourceId'] = physicalResourceId or context.log_stream_name
-    responseBody['StackId'] = event['StackId']
-    responseBody['RequestId'] = event['RequestId']
-    responseBody['LogicalResourceId'] = event['LogicalResourceId']
-    responseBody['NoEcho'] = noEcho
-    responseBody['Data'] = responseData
+    responseBody = {
+        'Status': responseStatus,
+        'Reason': reason
+        or f'See the details in CloudWatch Log Stream: {context.log_stream_name}',
+        'PhysicalResourceId': physicalResourceId or context.log_stream_name,
+        'StackId': event['StackId'],
+        'RequestId': event['RequestId'],
+        'LogicalResourceId': event['LogicalResourceId'],
+        'NoEcho': noEcho,
+        'Data': responseData,
+    }
 
     json_responseBody = json.dumps(responseBody)
 
@@ -45,21 +47,24 @@ def send(event, context, responseStatus, responseData, physicalResourceId=None, 
         response = requests.put(responseUrl,
                                 data=json_responseBody,
                                 headers=headers)
-        print("Status code: " + response.reason)
+        print(f"Status code: {response.reason}")
     except Exception as e:
-        print("send(..) failed executing requests.put(..): " + str(e))
+        print(f"send(..) failed executing requests.put(..): {str(e)}")
 
 
 def run_command(command):
     code = 0
     try:
-        logger.debug("executing command: %s" % command)
+        logger.debug(f"executing command: {command}")
         output = subprocess.check_output(shlex.split(command), stderr=subprocess.STDOUT).decode("utf-8")
         logging.debug(output)
     except subprocess.CalledProcessError as exc:
         code = exc.returncode
         output = exc.output.decode("utf-8")
-        logger.error("Command failed [exit %s]: %s" % (exc.returncode, exc.output.decode("utf-8")))
+        logger.error(
+            f'Command failed [exit {exc.returncode}]: {exc.output.decode("utf-8")}'
+        )
+
     return code, output
 
 
@@ -74,9 +79,9 @@ if c != 0:
 
 def execute_cli(properties):
     code, response = run_command(f"/tmp/bin/aws {properties['AwsCliCommand']} --output json")
-    if code != 0 and ('NotFound' in response or 'does not exist' in response):
-        return None
     if code != 0:
+        if ('NotFound' in response or 'does not exist' in response):
+            return None
         raise Exception(response)
     return json.loads(response)
 

@@ -22,10 +22,8 @@ def stabilize(pid, cluster_name):
 @helper.create
 @helper.update
 def create(event, _):
-    pid = "{}-{}".format(
-        event['LogicalResourceId'],
-        ''.join(random.choice(string.ascii_lowercase) for i in range(8))
-    )
+    pid = f"{event['LogicalResourceId']}-{''.join(random.choice(string.ascii_lowercase) for _ in range(8))}"
+
     kwargs = {
         "fargateProfileName": pid,
         "clusterName": event['ResourceProperties']['ClusterName'],

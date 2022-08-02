@@ -20,11 +20,14 @@ except Exception as init_exception:
 
 def run_command(command):
     try:
-        print("executing command: %s" % command)
+        print(f"executing command: {command}")
         output = subprocess.check_output(shlex.split(command), stderr=subprocess.STDOUT).decode("utf-8")
         print(output)
     except subprocess.CalledProcessError as exc:
-        print("Command failed with exit code %s, stderr: %s" % (exc.returncode, exc.output.decode("utf-8")))
+        print(
+            f'Command failed with exit code {exc.returncode}, stderr: {exc.output.decode("utf-8")}'
+        )
+
         raise Exception(exc.output.decode("utf-8"))
     return output
 
@@ -37,14 +40,13 @@ def create_kubeconfig(cluster_name):
 @helper.create
 @helper.update
 def create_handler(event, _):
-    print('Received event: %s' % json.dumps(event))
+    print(f'Received event: {json.dumps(event)}')
     create_kubeconfig(event['ResourceProperties']['ClusterName'])
     name = event['ResourceProperties']['Name']
     retry_timeout = 0
     if "Timeout" in event['ResourceProperties']:
         retry_timeout = int(event['ResourceProperties']["Timeout"])
-    if retry_timeout > 600:
-        retry_timeout = 600
+    retry_timeout = min(retry_timeout, 600)
     namespace = event['ResourceProperties']['Namespace']
     json_path = event['ResourceProperties']['JsonPath']
     while True:
@@ -54,11 +56,10 @@ def create_handler(event, _):
         except Exception as e:
             if retry_timeout < 1:
                 raise
-            else:
-                logging.error('Exception: %s' % e, exc_info=True)
-                print("retrying until timeout...")
-                time.sleep(5)
-                retry_timeout = retry_timeout - 5
+            logging.error(f'Exception: {e}', exc_info=True)
+            print("retrying until timeout...")
+            time.sleep(5)
+            retry_timeout = retry_timeout - 5
     response_data = {}
     if "ResponseKey" in event['ResourceProperties']:
         response_data[event['ResourceProperties']["ResponseKey"]] = outp

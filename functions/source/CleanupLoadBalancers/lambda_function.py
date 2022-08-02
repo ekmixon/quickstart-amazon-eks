@@ -18,32 +18,34 @@ def delete_dependencies(sg_id, c):
     filters = [{'Name': 'ip-permission.group-id', 'Values': [sg_id]}]
     for sg in c.describe_security_groups(Filters=filters)['SecurityGroups']:
         for p in sg['IpPermissions']:
-            if 'UserIdGroupPairs' in p.keys():
-                if sg_id in [x['GroupId'] for x in p['UserIdGroupPairs']]:
-                    try:
-                        c.revoke_security_group_ingress(GroupId=sg['GroupId'], IpPermissions=[p])
-                    except Exception as e:
-                        logger.error("ERROR: %s %s" % (sg['GroupId'], str(e)))
+            if 'UserIdGroupPairs' in p.keys() and sg_id in [
+                x['GroupId'] for x in p['UserIdGroupPairs']
+            ]:
+                try:
+                    c.revoke_security_group_ingress(GroupId=sg['GroupId'], IpPermissions=[p])
+                except Exception as e:
+                    logger.error(f"ERROR: {sg['GroupId']} {str(e)}")
     filters = [{'Name': 'egress.ip-permission.group-id', 'Values': [sg_id]}]
     for sg in c.describe_security_groups(Filters=filters)['SecurityGroups']:
         for p in sg['IpPermissionsEgress']:
-            if 'UserIdGroupPairs' in p.keys():
-                if sg_id in [x['GroupId'] for x in p['UserIdGroupPairs']]:
-                    try:
-                        c.revoke_security_group_egress(GroupId=sg['GroupId'], IpPermissions=[p])
-                    except Exception as e:
-                        logger.error("ERROR: %s %s" % (sg['GroupId'], str(e)))
+            if 'UserIdGroupPairs' in p.keys() and sg_id in [
+                x['GroupId'] for x in p['UserIdGroupPairs']
+            ]:
+                try:
+                    c.revoke_security_group_egress(GroupId=sg['GroupId'], IpPermissions=[p])
+                except Exception as e:
+                    logger.error(f"ERROR: {sg['GroupId']} {str(e)}")
     filters = [{'Name': 'group-id', 'Values': [sg_id]}]
     for eni in c.describe_network_interfaces(Filters=filters)['NetworkInterfaces']:
         try:
             c.delete_network_interface(NetworkInterfaceId=eni['NetworkInterfaceId'])
         except Exception as e:
-            logger.error("ERROR: %s %s" % (eni['NetworkInterfaceId'], str(e)))
+            logger.error(f"ERROR: {eni['NetworkInterfaceId']} {str(e)}")
 
 
 @helper.delete
 def delete_handler(event, _):
-    tag_key = "kubernetes.io/cluster/%s" % event["ResourceProperties"]["ClusterName"]
+    tag_key = f'kubernetes.io/cluster/{event["ResourceProperties"]["ClusterName"]}'
     lb_types = [
         ["elb", "LoadBalancerName", "LoadBalancerNames", "LoadBalancerDescriptions", "LoadBalancerName"],
         ["elbv2", "LoadBalancerArn", "ResourceArns", "LoadBalancers", "ResourceArn"]
@@ -73,7 +75,7 @@ def delete_handler(event, _):
                             lbs_to_remove.append(tags[lt[4]])
         if lbs_to_remove:
             for lb in lbs_to_remove:
-                print("removing elb %s" % lb)
+                print(f"removing elb {lb}")
                 elb.delete_load_balancer(**{lt[1]: lb})
     del_sgs(tag_key, event["ResourceProperties"]["ClusterName"])
 
@@ -82,14 +84,15 @@ def del_sgs(tag_key, cluster_name):
     ec2 = boto3.client('ec2')
     filters = [
         [
-            {'Name': 'tag:%s' % tag_key, 'Values': ['owned']},
-            {'Name': 'resource-type', 'Values': ['security-group']}
+            {'Name': f'tag:{tag_key}', 'Values': ['owned']},
+            {'Name': 'resource-type', 'Values': ['security-group']},
         ],
         [
             {'Name': 'tag:elbv2.k8s.aws/cluster', 'Values': [cluster_name]},
-            {'Name': 'resource-type', 'Values': ['security-group']}
-        ]
+            {'Name': 'resource-type', 'Values': ['security-group']},
+        ],
     ]
+
 
     for f in filters:
         response = ec2.describe_tags(Filters=f)
@@ -103,7 +106,7 @@ def del_sgs(tag_key, cluster_name):
                 except ec2.exceptions.ClientError as e:
                     if 'DependencyViolation' in str(e):
                         retries -= 1
-                        print("Dependency error on %s" % t)
+                        print(f"Dependency error on {t}")
                         sleep(5)
                         delete_dependencies(t, ec2)
                     else:

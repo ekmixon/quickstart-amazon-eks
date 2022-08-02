@@ -19,10 +19,7 @@ except Exception as init_exception:
 def get_caller_arn(stack_id):
     try:
         root_id = cfn_client.describe_stacks(StackName=stack_id)['Stacks'][0]['RootId']
-    except ValueError:
-        traceback.print_exc()
-        return "NotFound"
-    except IndexError:
+    except (ValueError, IndexError):
         traceback.print_exc()
         return "NotFound"
     create_time = cfn_client.describe_stacks(StackName=root_id)['Stacks'][0]['CreationTime']
@@ -40,7 +37,7 @@ def get_caller_arn(stack_id):
             )
             if len(response['Events']) > 0:
                 return sts_to_role(json.loads(response['Events'][0]['CloudTrailEvent'])['userIdentity']['arn'])
-            logger.info('Event not in cloudtrail yet, %s retries left' % str(retries))
+            logger.info(f'Event not in cloudtrail yet, {retries} retries left')
         except Exception as e:
             logger.error(str(e), exc_info=True)
         if retries == 0:
@@ -66,9 +63,7 @@ def create(event, _):
     try:
         arn = get_caller_arn(event['StackId'])
         helper.Data['Arn'] = arn
-        if len(arn.split('/')) < 2:
-            return arn
-        return arn.split('/')[1]
+        return arn if len(arn.split('/')) < 2 else arn.split('/')[1]
     except Exception:
         logger.error("unexpected error", exc_info=True)
         helper.Data['Arn'] = "NotFound"
